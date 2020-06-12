@@ -63,6 +63,8 @@ reads_raw <- read.table("3pc_reads_mapV2.tsv", header = T, sep = "\t", comment.c
 #must remove all samples with FP in name as these are barcodes not MBC 
 reads<-select(reads_raw, -matches(".FP."))
 #make column 1 the row names and delete column 1 (could this be done before hand?)
+  #TJC: yes, of course, but the idea is that this script reads the data from metabarcoding
+  # directly without having to do any manual or other adjustment to the data.
 MBC_reads <- data.frame(reads[,-1], row.names=reads[,1])
 rm(reads)
 
@@ -72,6 +74,7 @@ rm(reads)
 
 metadata_raw <- read.csv("treedata_matt.csv", header=T)
 metadata <- read.csv("treedata_matt.csv", header=T)
+  # TJC: what's the point in having two objects with identical data?
 
 # If the sample names are in a different column, do this:
 
@@ -94,6 +97,11 @@ colnames(taxonomy) <- c("taxonomy", "strand", "selected")
 
 MBC_reads <- t(MBC_reads)
 
+# TJC: you need to drop the two samples that have "MT" in their name -
+# don't worry, they would previously have been dropped later anyway but
+# it now needs to be done here.
+MBC_reads <- MBC_reads[! grepl("_MT", row.names(MBC_reads)), ]
+
 # If we have multiple metabarcoding samples that actually represent the 
 # same ecological sample, here we might merge them together
 #The rows from the same tray (i.e. same TX-YY) should be summed together
@@ -103,7 +111,16 @@ MBC_reads <- t(MBC_reads)
 #pattern - "_P[^_]* means match _ and P, ^match any character after P that is not in the set i.e 0 or higher number
 #* means anything after match nothing after the last _
 #the rownames MBC_reads takes the data from the row names in MBC_reads
-samples_tree_trap<-gsub(pattern = "_P[^_]*", '', rownames(MBC_reads)) 
+samples_tree_trap <- gsub(pattern = "_P[^_]*", '', rownames(MBC_reads)) 
+
+# TJC: This section seems to be missing a part, it's not properly grouping 
+# over trays since samples with different parts (i.e all, bulk, 
+# coleoptera non-ms) are still in here. I can't remember now whether I gave
+# you code for this or left it to you, in any case it can be done with the following:
+
+samples_tree_trap <- gsub('^.*_T', 'T', samples_tree_trap)
+
+
 #the character list and puts it into a table that allows us to look at how many there are of each
 #there should be 3's through out other than a the occasional 2 for OTU delimitation calibration
 samplenames<-table(samples_tree_trap)
@@ -117,11 +134,17 @@ MBC_reads<-sapply(samplenames, function(n){
  return(round(x,0))
 }) %>% t
 
+
+
 #The tree for each row should be identified, and this used to duplicate out the metadata table to have a row of the correct tree for each sample.
 #extract rownames in mbc_reads, that meet the _T[^-]* requirements (_T and below, aka the tree number and trap number)
-treenumbers<-str_extract(rownames(MBC_reads), "_T[^-]*") %>% gsub(pattern = "_", "", .)
+
+# TJC: this line is completely redundant, the object it creates isn't used anywhere.
+#treenumbers<-str_extract(rownames(MBC_reads), "_T[^-]*") %>% gsub(pattern = "_", "", .)
+
 #creates a dataframe of tree code and tree number next to it (column names)
-temp <- data.frame(sample = rownames(MBC_reads), tree = str_extract(rownames(MBC_reads), "_T[^\\.]*") %>% gsub(pattern = "_T", "", .))
+# TJC: removed the '_' from the regex to fit with my added filter above line 121
+temp <- data.frame(sample = rownames(MBC_reads), tree = str_extract(rownames(MBC_reads), "T[^\\.]*") %>% gsub(pattern = "T", "", .))
 #changes tree value to an integer 
 temp$tree<-as.integer(temp$tree)
 #removes na values from tree column
@@ -133,10 +156,6 @@ metadata<-merge(metadata, temp, by.x = "treeid", by.y = "tree", all.x = T, all.y
 row.names(metadata) <- metadata$sample
 #remove sample column as it is now the rownames
 metadata <- subset(metadata, select = -sample)
-#do something to colnames that do not equal "sample" confused on this one - TJC: this is exactly the same as the previous one, we
-#just added it because the previous didn't seem to be working right. 
-metadata <- metadata[, colnames(metadata)[! colnames(metadata) == "sample"]]
-#should i remove the above line?
 
 # Next, check that our metadata and reads table correspond. For both 
 # tables, the sample names are in the row.names
@@ -146,6 +165,8 @@ all(row.names(MBC_reads) %in% row.names(metadata))
 
 # Make the metadata correspond to the reads. Takes rownames of metadata and puts it into the rownames of 
 #MBC_reads
+# TJC: it doesn't take them and put them in. It takes the MBC_reads table and sorts the rows of that table
+# according to the rows of the metadata table, then it overwrites the MBC_reads table.
 MBC_reads <- MBC_reads[row.names(metadata), ]
 #to check
 all(row.names(MBC_reads) %in% row.names(metadata))
@@ -214,17 +235,29 @@ taxonomy <- taxonomy[colnames(MBC_reads), ]
 #list orders of OTUs
 orders <- unique(taxonomy$order)
 # Taxonomic filtering - retain only OTUs of a certain taxon, e.g.:
-taxonomy <- taxonomy[taxonomy$order == "Coleoptera", ]
+
+# TJC: since as you can see from your above command, there are NA values in 
+# taxonomy$order, you need to ensure you also remove these
+taxonomy <- taxonomy[taxonomy$order == "Coleoptera" & !is.na(taxonomy$order), ]
 #list arthropod orders
 arthro_orders <- unique(taxonomy$order)
 #
 taxonomy <- taxonomy[taxonomy$order %in% arthro_orders, ]
 # 1834 OTUs here in taxonomy
-taxonomy<-na.omit(taxonomy)
+# TJC: Running na.omit of a dataframe like this is really dangerous, because
+#  you don't know whether you necessarily want to remove all rows with NAs,
+#  they might be in columns that are fine and you're just blanket removing all of
+#  them. Now we know there are some NAs in order and we rightfully want to remove
+#  them, but we don't mind if they have NA in family or genus, do we? We just
+#  care if they're Coleoptera. So much better to handle NAs explicitly, like I
+#  did above on line 241
+#taxonomy<-na.omit(taxonomy)
 # 1795 OTus here in taxonomy, 39 OTUs were na
 MBC_reads <- MBC_reads[, rownames(taxonomy)]
 #to 1795 OTUs here, 8309 (orginal before filtering to coleoptera) - 1795 = 6514 OTUs which are dropped
 # i.e not coleoptera
+# TJC: now it's 1808 but that's a minor change, just retaining some OTUs which are
+# Coleoptera but have unknown family/genus
 
 # Read number filtering 
 # Set counts less than a certain value to 0 - this isn't recommended
@@ -239,6 +272,8 @@ MBC_reads <- MBC_reads[, rownames(taxonomy)]
 
 threshold <- 0.0005
 #MTH works through rows, if s is less than threshold, where s is equal to the s/sum of s, the value is given a 0
+# TJC works through the rows, any values in the row where the value divided by the sum of the row is less than the
+# threshold is given a 0
 MBC_reads <- apply(MBC_reads, 1, function(s){
   s[s/sum(s) < threshold] <- 0
   return(s)

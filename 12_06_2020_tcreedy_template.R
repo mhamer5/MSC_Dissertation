@@ -68,6 +68,15 @@ reads<-select(reads_raw, -matches(".FP."))
 MBC_reads <- data.frame(reads[,-1], row.names=reads[,1])
 rm(reads)
 
+# Generally, samples should be rows and species should be columns, so
+# we transpose the usearch_global --tabbedout reads table
+
+MBC_reads <- t(MBC_reads)
+# TJC: given you dropped samples above, you should also make sure to drop any OTUs
+#  that have no reads now. 
+MBC_reads <- MBC_reads[, colSums(MBC_reads)>0]
+
+
 # Load metadata table (change command if yours is a different format!)
 # Note that here I'm assuming that the first column of the metadata
 # table is the sample names.
@@ -88,14 +97,58 @@ metadata <- read.csv("treedata_matt.csv", header=T)
 taxonomy <- read.table("otus_midori_sintax.tsv", sep = "\t", row.names = 1)
 colnames(taxonomy) <- c("taxonomy", "strand", "selected")
 
+
+# Filtering low abundance OTU incidences ----------------------------------
+
+# Read number filtering 
+# Set counts less than a certain value to 0 - this isn't recommended
+# because it doesn't take into account total reads per sample. It also
+# generates difficulties with some of the accumulation tests later
+
+#MBC_reads[MBC_reads < 2] <- 0
+
+# Read proportion filtering
+# Set counts that are less than a certain proportion of reads in a 
+# sample to 0. 
+# First generate a filtering matrix, which gives the proportion of 
+# total reads in a sample for each OTU.
+samplewise_p <- apply(MBC_reads, 1, function(s) s/sum(s) ) %>% t()
+
+# Could then explore this matrix. At the simplest level, produce a
+# histogram showing the distribution of proportion of per-OTU sample
+# incidences that exceed a threshold value (here 0.5%, i.e. 0.005).
+apply(samplewise_p, 2, function(o) sum(o >= 0.005) / sum(o > 0)) %>% hist()
+
+# Could also find the maximum proportion for each OTU
+maxprops <- apply(samplewise_p, 2, function(o) max(o)) %>% sort()
+
+# Can use this to show how many OTUs would be lost completely for 
+# different thresholds (because maxprops is sorted)
+# E.g. what value would retain 95% of OTUs:
+maxprops[floor((1 - 0.95) * length(maxprops))]
+# E.g. what proportion of OTUs would be dropped if drop incidences less than 0.5%
+sum(maxprops <= 0.000125) / length(maxprops)
+
+# An important consideration is that no sample should be left without any OTUs
+# that occur only once, otherwise estimated richness cannot be calculated.
+# Given that the minimum >0 proportion of any OTU within a sample is going to be
+# for OTUs that only have 1 read, we can find the maximum threshold that fits
+# this consideration
+apply(samplewise_p, 1, function(s) min(s[s>0])) %>% min()
+
+# If this value is too low, you could pick a higher value and throw away samples 
+# later. This isn't ideal though...
+
+# So, pick a threshold. This is very data-dependent. Think carefully
+threshold <- 0.000125
+
+MBC_reads[samplewise_p < threshold] <- 0
+MBC_reads <- MBC_reads[rowSums(MBC_reads) > 0, colSums(MBC_reads) > 0]
+rm(samplewise_p)
+
 # Organise data -----------------------------------------------------------
 # Here we make sure all the data corresponds properly to each other and 
 # any reconfiguration or merging is done as needed.
-
-# Generally, samples should be rows and species should be columns, so
-# we transpose the usearch_global --tabbedout reads table
-
-MBC_reads <- t(MBC_reads)
 
 # TJC: you need to drop the two samples that have "MT" in their name -
 # don't worry, they would previously have been dropped later anyway but
@@ -120,21 +173,21 @@ samples_tree_trap <- gsub(pattern = "_P[^_]*", '', rownames(MBC_reads))
 
 samples_tree_trap <- gsub('^.*_T', 'T', samples_tree_trap)
 
-
 #the character list and puts it into a table that allows us to look at how many there are of each
 #there should be 3's through out other than a the occasional 2 for OTU delimitation calibration
 samplenames<-table(samples_tree_trap)
 #this summates the rows by sample_tree_trap, there all traps have been put together into their respective rows
 MBC_reads<-rowsum(MBC_reads, group = samples_tree_trap)
 
+# The below part can be removed now. The standardisation was only important for the filtering to be 
+# appropriate, but now that the filtering has already happened we can ignore this.
+
 #sapply takes the summated rows and divides each row by the number of rows that went in and then multiples by 3, returning a rounded number to 0
 #it also transposes it at the end
-MBC_reads<-sapply(samplenames, function(n){
- x<-(MBC_reads[n,]/samplenames[n])*3
- return(round(x,0))
-}) %>% t
-
-
+#MBC_reads<-sapply(samplenames, function(n){
+# x<-(MBC_reads[n,]/samplenames[n])*3
+# return(round(x,0))
+#}) %>% t
 
 #The tree for each row should be identified, and this used to duplicate out the metadata table to have a row of the correct tree for each sample.
 #extract rownames in mbc_reads, that meet the _T[^-]* requirements (_T and below, aka the tree number and trap number)
@@ -230,6 +283,10 @@ metadata<-metadata %>%
   filter(., species != "Pinus sp.") %>%
   column_to_rownames('sample')
 MBC_reads <- MBC_reads[rownames(metadata), ]
+# TJC: as always, when you remove samples, you should check to see if any
+#  otus should now be removed too!
+MBC_reads <- MBC_reads[, colnames(MBC_reads)]
+
 taxonomy <- taxonomy[colnames(MBC_reads), ]
 
 #list orders of OTUs
@@ -244,6 +301,7 @@ arthro_orders <- unique(taxonomy$order)
 #
 taxonomy <- taxonomy[taxonomy$order %in% arthro_orders, ]
 # 1834 OTUs here in taxonomy
+
 # TJC: Running na.omit of a dataframe like this is really dangerous, because
 #  you don't know whether you necessarily want to remove all rows with NAs,
 #  they might be in columns that are fine and you're just blanket removing all of
@@ -259,38 +317,17 @@ MBC_reads <- MBC_reads[, rownames(taxonomy)]
 # TJC: now it's 1808 but that's a minor change, just retaining some OTUs which are
 # Coleoptera but have unknown family/genus
 
-# Read number filtering 
-# Set counts less than a certain value to 0 - this isn't recommended
-# because it doesn't take into account total reads per sample. It also
-# generates difficulties with some of the accumulation tests later
-
-#MBC_reads[MBC_reads < 2] <- 0
-
-# Read proportion filtering
-# Set counts that are less than a certain proportion of reads in a 
-# sample to 0. The threshold here is 0.5%
-
-threshold <- 0.0005
-#MTH works through rows, if s is less than threshold, where s is equal to the s/sum of s, the value is given a 0
-# TJC works through the rows, any values in the row where the value divided by the sum of the row is less than the
-# threshold is given a 0
-MBC_reads <- apply(MBC_reads, 1, function(s){
-  s[s/sum(s) < threshold] <- 0
-  return(s)
-}) %>% t()
-rm(threshold)
-#1795 OTUs still
-
 # After filtering you may have some OTUs or samples that now have 0 reads
 # so these should be filtered out and the relevant lines in the metadata/
 # taxonomy dropped as well
 
-#MBC_reads <- MBC_reads[rowSums(MBC_reads) > 0, colSums(MBC_reads) > 0]
-#Maybe this line needs editing. Go from 1795 to 63, that means there are 1733 OTUs with 0 reads
-#metadata <- metadata[rownames(MBC_reads), ]
-#taxonomy <- taxonomy[colnames(MBC_reads), ]
+MBC_reads <- MBC_reads[rowSums(MBC_reads) > 0, colSums(MBC_reads) > 0]
 
-#BIG PROBLEM HERE, loose thousands of OTUs.
+dim(MBC_reads)
+# TJC: so now you have 1605 Coleoptera OTUS in 411 samples. Respectable. 
+
+metadata <- metadata[rownames(MBC_reads), ]
+taxonomy <- taxonomy[colnames(MBC_reads), ]
 
 #MTH Which filtering mechanism shall I use? which would be the most appropiate for my question? 
 #Should I retain max community composition or min? or perhaps somewhere in the middle?
@@ -352,7 +389,7 @@ MBC_reads[MBC_reads > 0] <- 1
 
 # Finally, we need to clean up after standardisation
 # Remove any OTUs which no longer have any reads
-#MBC_reads <- MBC_reads[, colSums(MBC_reads) > 0]
+#MBC_reads <- MBC_reads[rowSums(MBC_reads) > 0, colSums(MBC_reads) > 0]
 #474
 # Remove any dropped samples/OTUs from metadata/taxonomy tables
 #metadata <- metadata[rownames(MBC_reads), ]
@@ -379,18 +416,34 @@ specnumber(MBC_reads, groups = metadata$GPS_alt)
 
 #NMDs
 reads_dist<-vegdist(MBC_reads, method = "jaccard")
+
 NMDS.scree <- function(x){
-  plot(rep(1,5), replicate(10, metaMDS(x, autotransform = T, k=1, trymax = 150)$stress), xlim = c(1,5),
+  # TJC: autotransform is irrelevant here because you're giving it dissimilarities. Just FYI
+  plot(rep(1,5), replicate(10, metaMDS(x, autotransform = T, k=1, trymax = 10)$stress), xlim = c(1,5),
        ylim = c(0, 0.30), xla ="# of Dimensions", ylab = "Stress", main ="NMDS stress plot")
   for(i in 1:5){
-    points(rep(i +1,5), replicate(5, metaMDS(x, autotransform = T, k=i+1, trymax = 150)$stress))
+    points(rep(i +1,5), replicate(5, metaMDS(x, autotransform = T, k=i+1, trymax = 10)$stress))
   }
 }
+
 
 #run nmds 
 jpeg("NMDsscreeplot.jpg", width =480, height=480)
 NMDS.scree(reads_dist)
 dev.off()
+
+# My version so that it can take the raw community data
+NMDS.scree <- function(x, distance, autotransform, trymax){
+  plot(rep(1,5), replicate(10, metaMDS(x, distance = distance, autotransform = autotransform, 
+                                       k=1, trymax = trymax)$stress), xlim = c(1,5),
+       ylim = c(0, 0.30), xla ="# of Dimensions", ylab = "Stress", main ="NMDS stress plot")
+  for(i in 1:5){
+    points(rep(i +1,5), replicate(5, metaMDS(x, distance = distance, autotransform = autotransform, 
+                                             k=i+1, trymax = trymax)$stress))
+  }
+}
+
+NMDS.scree(MBC_reads, 'jaccard', TRUE, 20)
 
 #insuffient data, how have i lost thousands of OTUs?? I go from 8000 otus to 64, something wrong here
 #pca on habitatvariables

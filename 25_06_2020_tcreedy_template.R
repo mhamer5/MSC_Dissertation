@@ -1,4 +1,3 @@
-
 # Introduction ------------------------------------------------------------
 
 # By Thomas J. Creedy, 2020-04-03
@@ -42,6 +41,9 @@ library(RAM)
 library(BiodiversityR)
 library(iNEXT)
 library(tibble)
+library(ape)
+library(geosphere)
+library(RAM)
 
 
 # Load functions ----------------------------------------------------------
@@ -50,7 +52,7 @@ library(tibble)
 
 source("check_expected_richness.R")
 source("rarexplore.R")
-
+source("plot_adipart.R")
 # Load data ---------------------------------------------------------------
 # Load the three core data tables. If you have more than these data,
 # great! Add loading commands for them here. I would generally suggest
@@ -63,8 +65,8 @@ reads_raw <- read.table("3pc_reads_mapV2.tsv", header = T, sep = "\t", comment.c
 #must remove all samples with FP in name as these are barcodes not MBC 
 reads<-select(reads_raw, -matches(".FP."))
 #make column 1 the row names and delete column 1 (could this be done before hand?)
-  #TJC: yes, of course, but the idea is that this script reads the data from metabarcoding
-  # directly without having to do any manual or other adjustment to the data.
+#TJC: yes, of course, but the idea is that this script reads the data from metabarcoding
+# directly without having to do any manual or other adjustment to the data.
 MBC_reads <- data.frame(reads[,-1], row.names=reads[,1])
 rm(reads)
 
@@ -82,8 +84,12 @@ MBC_reads <- MBC_reads[, colSums(MBC_reads)>0]
 # table is the sample names.
 
 metadata_raw <- read.csv("treedata_matt.csv", header=T)
+metadata_raw <- filter(metadata_raw, species!="Pinus sp.")
 metadata <- read.csv("treedata_matt.csv", header=T)
-  # TJC: what's the point in having two objects with identical data?
+climband<-c("2020", "2000", "2000", "2000", "2080", "2080", "2080","2020","2020","2020","2020","2020", "2000","2000","2000","2080","2080")
+metadata<-cbind(metadata, climband)
+# TJC: what's the point in having two objects with identical data?
+# MTH: I use metadata_raw later on in exploratory stats
 
 # If the sample names are in a different column, do this:
 
@@ -128,6 +134,7 @@ maxprops <- apply(samplewise_p, 2, function(o) max(o)) %>% sort()
 maxprops[floor((1 - 0.95) * length(maxprops))]
 # E.g. what proportion of OTUs would be dropped if drop incidences less than 0.5%
 sum(maxprops <= 0.000125) / length(maxprops)
+#0.02392519
 
 # An important consideration is that no sample should be left without any OTUs
 # that occur only once, otherwise estimated richness cannot be calculated.
@@ -135,6 +142,7 @@ sum(maxprops <= 0.000125) / length(maxprops)
 # for OTUs that only have 1 read, we can find the maximum threshold that fits
 # this consideration
 apply(samplewise_p, 1, function(s) min(s[s>0])) %>% min()
+#8.805142e-06
 
 # If this value is too low, you could pick a higher value and throw away samples 
 # later. This isn't ideal though...
@@ -145,6 +153,7 @@ threshold <- 0.000125
 MBC_reads[samplewise_p < threshold] <- 0
 MBC_reads <- MBC_reads[rowSums(MBC_reads) > 0, colSums(MBC_reads) > 0]
 rm(samplewise_p)
+#rm(threshold) ?
 
 # Organise data -----------------------------------------------------------
 # Here we make sure all the data corresponds properly to each other and 
@@ -216,8 +225,6 @@ metadata <- subset(metadata, select = -sample)
 # Are all MBC samples in metadata? If not, problem!!!
 all(row.names(MBC_reads) %in% row.names(metadata))
 
-# Make the metadata correspond to the reads. Takes rownames of metadata and puts it into the rownames of 
-#MBC_reads
 # TJC: it doesn't take them and put them in. It takes the MBC_reads table and sorts the rows of that table
 # according to the rows of the metadata table, then it overwrites the MBC_reads table.
 MBC_reads <- MBC_reads[row.names(metadata), ]
@@ -236,18 +243,18 @@ taxonomy <- taxonomy[colnames(MBC_reads),]
 
 # We create a detailed version of the taxonomy table with the scores
 # This code is based on Yige Sun's rewriting of this step, thanks!
-    # Add the OTUs as a column
+# Add the OTUs as a column
 taxonomy$otu <- row.names(taxonomy)
-    # Separate the taxonomy column into multiple columns by the ',' character
+# Separate the taxonomy column into multiple columns by the ',' character
 taxdetailed <- separate(taxonomy, taxonomy, paste0('V', 1:(max(str_count(taxonomy$taxonomy, ','))+1)), 
                         sep = ",", fill = 'right', remove = T) %>% 
-    # Turn the separate columns for taxa into rows
+  # Turn the separate columns for taxa into rows
   pivot_longer(., cols = starts_with('V'), values_to = 'taxon', values_drop_na = T) %>%
-    # Retain only the OTU and taxon columns
+  # Retain only the OTU and taxon columns
   select(otu, taxon) %>%
-    # Separate the taxon column into three columns by colon and parentheses
+  # Separate the taxon column into three columns by colon and parentheses
   separate(., taxon, into = c('level', 'taxon', 'score', NA), sep = "[:()]")
-  
+
 # Record which taxa were selected
 taxdetailed$selected <- taxdetailed$score == 1
 
@@ -310,10 +317,7 @@ taxonomy <- taxonomy[taxonomy$order %in% arthro_orders, ]
 #  care if they're Coleoptera. So much better to handle NAs explicitly, like I
 #  did above on line 241
 #taxonomy<-na.omit(taxonomy)
-# 1795 OTus here in taxonomy, 39 OTUs were na
 MBC_reads <- MBC_reads[, rownames(taxonomy)]
-#to 1795 OTUs here, 8309 (orginal before filtering to coleoptera) - 1795 = 6514 OTUs which are dropped
-# i.e not coleoptera
 # TJC: now it's 1808 but that's a minor change, just retaining some OTUs which are
 # Coleoptera but have unknown family/genus
 
@@ -329,8 +333,6 @@ dim(MBC_reads)
 metadata <- metadata[rownames(MBC_reads), ]
 taxonomy <- taxonomy[colnames(MBC_reads), ]
 
-#MTH Which filtering mechanism shall I use? which would be the most appropiate for my question? 
-#Should I retain max community composition or min? or perhaps somewhere in the middle?
 
 #  Standardisation --------------------------------------------------------
 # It is crucial with metabarcoding that you ensure your samples are 
@@ -350,7 +352,7 @@ taxonomy <- taxonomy[colnames(MBC_reads), ]
 # of their expected OTU richness?
 # Here we set the threshold proportion of recovery to 85%. This is 
 # probably the lowest this should be.
-jpeg("check_expectedrich.jpg", width =480, height=480)
+jpeg("check_expectedrich.jpg", width =600, height=800)
 check <- check_expected_richness(MBC_reads, 0.85)
 dev.off()
 
@@ -385,17 +387,20 @@ MBC_reads <- MBC_reads[check[[1]],]
 # when you may retain read numbers is if you are interested in looking 
 # at variation between one or a small number of similar OTUs in rarefied 
 # samples.
+
 MBC_reads[MBC_reads > 0] <- 1
+#1605 OTUs in MBC_reads
 
 # Finally, we need to clean up after standardisation
 # Remove any OTUs which no longer have any reads
-#MBC_reads <- MBC_reads[rowSums(MBC_reads) > 0, colSums(MBC_reads) > 0]
-#474
-# Remove any dropped samples/OTUs from metadata/taxonomy tables
-#metadata <- metadata[rownames(MBC_reads), ]
-#taxonomy <- taxonomy[colnames(MBC_reads), ]
 
-#MTH for coleoptera using the check expected richness, MBC_reads has 63 OTUs
+MBC_reads <- MBC_reads[rowSums(MBC_reads) > 0, colSums(MBC_reads) > 0]
+#1587 OTUs in MBC_reads
+
+#Remove any dropped samples/OTUs from metadata/taxonomy tables
+metadata <- metadata[rownames(MBC_reads), ]
+taxonomy <- taxonomy[colnames(MBC_reads), ]
+
 #______________________________________________________________
 #EXPLORING DATA
 
@@ -405,57 +410,68 @@ MBC_reads[MBC_reads > 0] <- 1
 #examine basic diversity indices
 #OTU richness
 specnumber(MBC_reads, groups = metadata$species)
-specnumber(MBC_reads, groups = metadata$treeid)
+treeid<-specnumber(MBC_reads, groups = metadata$treeid)
 specnumber(MBC_reads, groups = metadata$camp)
 specnumber(MBC_reads, groups = metadata$GPS_alt)
+#___________________________________
+#Mantel Test 
 
-#beta diveristy, needs fixing
-#betadiver(MBC_reads, method = "j", groups = metadata$species)
+dist.pres_abs = vegdist(MBC_reads, method = "jaccard")
 
-#bar graphs of specnumber
+#environmental vector (gpsalt or elevation)
+elevation = metadata$GPS_alt
+dist_elevation = dist(elevation, method = "euclidean")
+#Mantel elvation test
+reads_elevation = mantel(dist.pres_abs, dist_elevation, method = "spearman", permutations = 9999, na.rm = TRUE)
 
+#distance matrix for ongitude and latitude
+geo = data.frame(df$Longitude, df$Latitude)
+d_geo = distm(geo, fun = distHaversine)
+dist.geo = as.dist(d.geo)
+#longitude and latitude 
+long_lat = data.frame(metadata$longitude, metadata$latitude)
+#haversine distance - The shortest distance between two points (i.e., the 'great-circle-distance' or 'as the crow flies'), 
+#according to the 'haversine method'. 
+#This method assumes a spherical earth, ignoring ellipsoidal effects
+#Is there a better method that accounts for elevation changes?
+d_geo = distm(long_lat, fun = distHaversine)
+dist.geo = as.dist(d_geo)
+abund_geo  = mantel(dist.pres_abs, dist.geo, method = "spearman", permutations = 9999, na.rm = TRUE)
+
+
+#_______________________________
 #NMDs
-reads_dist<-vegdist(MBC_reads, method = "jaccard")
+#Thomas version so that it can take the raw community data
+#NMDS.scree <- function(x, distance, autotransform, trymax){
+#  plot(rep(1,5), replicate(5, metaMDS(x, distance = distance, autotransform = autotransform, 
+    #                                  k=1, trymax = trymax)$stress), xlim = c(1,5),
+    #   ylim = c(0, 0.4), xla ="# of Dimensions", ylab = "Stress", main ="NMDS stress plot euclidean @1000")
+#  for(i in 1:7){
+  #  points(rep(i +1,5), replicate(5, metaMDS(x, distance = distance, autotransform = autotransform, 
+                                        #     k=i+1, trymax = trymax)$stress))
+ # }
+#}
 
-NMDS.scree <- function(x){
-  # TJC: autotransform is irrelevant here because you're giving it dissimilarities. Just FYI
-  plot(rep(1,5), replicate(10, metaMDS(x, autotransform = T, k=1, trymax = 10)$stress), xlim = c(1,5),
-       ylim = c(0, 0.30), xla ="# of Dimensions", ylab = "Stress", main ="NMDS stress plot")
-  for(i in 1:5){
-    points(rep(i +1,5), replicate(5, metaMDS(x, autotransform = T, k=i+1, trymax = 10)$stress))
-  }
-}
-
-
-#run nmds 
-jpeg("NMDsscreeplot.jpg", width =480, height=480)
-NMDS.scree(reads_dist)
-dev.off()
-
-# My version so that it can take the raw community data
-NMDS.scree <- function(x, distance, autotransform, trymax){
-  plot(rep(1,5), replicate(10, metaMDS(x, distance = distance, autotransform = autotransform, 
-                                       k=1, trymax = trymax)$stress), xlim = c(1,5),
-       ylim = c(0, 0.30), xla ="# of Dimensions", ylab = "Stress", main ="NMDS stress plot")
-  for(i in 1:5){
-    points(rep(i +1,5), replicate(5, metaMDS(x, distance = distance, autotransform = autotransform, 
-                                             k=i+1, trymax = trymax)$stress))
-  }
-}
-
-NMDS.scree(MBC_reads, 'jaccard', TRUE, 20)
-
-#insuffient data, how have i lost thousands of OTUs?? I go from 8000 otus to 64, something wrong here
-#pca on habitatvariables
-#princomp(metadata)
-
-#to build accumulation curves for each altitude 
+#NMDS.scree(MBC_reads, 'jaccard', TRUE, 100)
+#reads_dist<-vegdist(MBC_reads, method = "jaccard")
+#CommunityNMDS_k5_jaccard <- metaMDS(reads_dist,
+#                                    distance = "jaccard",
+ #                                   k = 5,
+  #                                  maxit = 99, 
+   #                                 trymax = 100, 
+          #                          wescores = T)
+#CommunityNMDS_k3_euclidean$stress
+#stressplot(CommunityNMDS_k3_euclidean)
+#ordiplot(CommunityNMDS_k3_euclidean,type="p")
+#ordihull(CommunityNMDS_k3_euclidean,groups=metadata$climband,draw="polygon", col="grey90",label=T, cex=0.5, main = "CommunityNMDS_k3_euclidean100trymax")
+#_____________________________
+#Chao exploration
 
 #library(ggpubr)
 #graph the altitudes of different trees, just exploration
 #alt_bar<-ggplot(data=metadata, aes(x=treeid, y=GPS_alt, fill=GPS_alt)) +
-  #geom_bar(stat="identity", position=position_dodge())+labs(x="tree number", y="tree altitude")+
-  #scale_fill_continuous(name="trees and their altitude")
+#geom_bar(stat="identity", position=position_dodge())+labs(x="tree number", y="tree altitude")+
+#scale_fill_continuous(name="trees and their altitude")
 #alt_bar
 #Chao estimates of species richness and bargraph for each tree
 otuspecpooltree<-specpool(MBC_reads, metadata$treeid)
@@ -464,34 +480,13 @@ otuspecpooltree["camp"]<-metadata_raw$camp
 otuspecpooltree["scale_treealt"]<-scale(metadata_raw$GPS_alt)
 otuspecpooltree["treealt"]<-metadata_raw$GPS_alt
 
-#otuspecpooltreeplot<-(otuspecpooltree, aes(x=treeid, y=Species)) +
-  #geom_bar(stat="identity", fill="steelblue")
-#plot(otuspecpooltreeplot)
-
-ggplot(otuspecpooltree, aes(x=treeid, y=chao)) + geom_bar(stat="identity", position=position_dodge()) +
-  geom_errorbar(aes(ymin=chao-chao.se, ymax=chao+chao.se))
-#jpeg("chaotreeidbar", width = 480, height= 480, res = 300)
-
-#Chao estimates of species richness and bargraph for each camp 
-otuspecpoolcamp<-specpool(MBC_reads, metadata$camp)
-otuspecpoolcamp["camp"]<-c("BC", "CA", "CP", "GU")
-
-jpeg("chaobycampbar.jpg", width = 480, height = 480, units = "px", pointsize = 12, quality = 75, bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
-ggplot(otuspecpoolcamp, aes(x=reorder(camp, -chao), y=chao)) + geom_bar(stat="identity") +
-  geom_errorbar(aes(ymin=chao-chao.se, ymax=chao+chao.se))
-dev.off()
-
-#Chao estimates of species richness and bargraph for each tree
-otuspecpooltree<-specpool(MBC_reads, metadata$treeid)
-otuspecpooltree <- otuspecpooltree %>% rownames_to_column("treeid")
-
 jpeg("chaobytreebar.jpg", width = 480, height = 480, units = "px", pointsize = 12, quality = 75, bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
 ggplot(otuspecpooltree, aes(x=reorder(treeid, -chao), y=chao)) + geom_bar(stat="identity") +
   geom_errorbar(aes(ymin=chao-chao.se, ymax=chao+chao.se))
 dev.off()
 
 #specaccume using vegan package
-#Per tree spcies
+#Per tree species
 #liquid amber
 liquidamber_accum <- specaccum(MBC_reads, method = "random", permutations = 1000, subset=metadata$species=="Liquidambar styracaflua")
 jpeg("liquidamber_accumVegan.jpg", width = 480, height = 480, units = "px", pointsize = 12, quality = 75,bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
@@ -500,141 +495,41 @@ plot(liquidamber_accum, ci.type = "poly", col = "blue", ci.col = "lightblue",
      ylab = "cumulative number of OTUs")
 dev.off()
 
-#___________________
-
-#biodiveristyR package species accumulation curves using biodiveristyR package
-
-metadata$trap.totals <- apply(MBC_reads,1,sum)
-Accum.1 <- accumresult(MBC_reads, y=metadata, scale='trap.totals', method='exact', conditioned=TRUE, permutations = 1000)
-
-#Per camp
-jpeg("camp_accumBioDivR.jpg", width = 480, height = 480, units = "px", pointsize = 12, quality = 75,bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
-accumcomp(MBC_reads, y=metadata, factor='camp', method='exact', legend=FALSE, conditioned=TRUE, xlab="trap")
-dev.off()
-#per tree species
-jpeg("treesp_accumBioDivR.jpg", width = 480, height = 480, units = "px", pointsize = 12, quality = 75,bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
-accumcomp(MBC_reads, y=metadata, factor='species', method='exact', legend=FALSE, conditioned=TRUE, xlab="trap")
-dev.off()
-#per altitudes
-jpeg("peralt_accumBioDivR.jpg", width = 480, height = 480, units = "px", pointsize = 12, quality = 75,bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
-accumcomp(MBC_reads, y=metadata, factor='GPS_alt', method='exact', legend=FALSE, conditioned=TRUE, xlab="trap")
-dev.off()
-
-#____________________________________
-#iNEXT accumulation 
-#Frequency raw
-
-#need to split mbc_reads by camp into separate matrixs
-#could use grep here instead
-
-BC<-subset(MBC_reads,metadata$camp=="BC" )
-BC_mat <- t(as.matrix(apply(BC,2,as.integer)))
-
-CA<-subset(MBC_reads,metadata$camp=="CA" )
-CA_mat <- t(as.matrix(apply(CA,2,as.integer)))
-
-GU<-subset(MBC_reads,metadata$camp=="GU" )
-Gu_mat <- t(as.matrix(apply(GU,2,as.integer)))
-
-CP<-subset(MBC_reads,metadata$camp=="CP" )
-CP_mat <- t(as.matrix(apply(CP,2,as.integer)))
-
-camp_list = list(BC = BC_mat, CA = CA_mat, GU = Gu_mat, CP = CP_mat)
-
-q0camp <- iNEXT(camp_list, q=c(0,1,2), datatype="incidence_raw", endpoint=500)
-jpeg("q0campaccum_iNEXT.jpg", width = 480, height = 480, units = "px", pointsize = 12, quality = 75,bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
-ggiNEXT(q0camp, facet.var = "none", type = 1)
-dev.off()
-
-ggiNEXT(q0camp, type=3, facet.var="site")
-ggiNEXT(q0camp, type=2, facet.var="none", color.var="site")
-
-estimateD(camp_list, datatype="incidence_raw", 
-          base="coverage", level=0.99, conf=0.95)
-
-q0camp$DataInfo
-q0camp$iNextEst
-q0camp$AsyEst
-
-#q0_1_2camp <- iNEXT(camp_list, q=c(0,1,2), datatype="incidence_raw", endpoint=500)
-#ggiNEXT(q0_1_2camp, facet.var = "order", type = 1)
-
-#this needs trimming for just liquid amber
-tree_3<-subset(MBC_reads,metadata$treeid=="3" )
-tree_3_mat <- t(as.matrix(apply(tree_3,2,as.integer)))
-
-tree_4<-subset(MBC_reads,metadata$treeid=="4" )
-tree_4_mat <- t(as.matrix(apply(tree_4,2,as.integer)))
-
-tree_6<-subset(MBC_reads,metadata$treeid=="6" )
-tree_6_mat <- t(as.matrix(apply(tree_3,2,as.integer)))
-
-tree_7<-subset(MBC_reads,metadata$treeid=="7" )
-tree_7_mat <- t(as.matrix(apply(tree_7,2,as.integer)))
-
-tree_8<-subset(MBC_reads,metadata$treeid=="8" )
-tree_8_mat <- t(as.matrix(apply(tree_8,2,as.integer)))
-
-tree_9<-subset(MBC_reads,metadata$treeid=="9" )
-tree_9_mat <- t(as.matrix(apply(tree_9,2,as.integer)))
-
-tree_10<-subset(MBC_reads,metadata$treeid=="10" )
-tree_10_mat <- t(as.matrix(apply(tree_10,2,as.integer)))
-
-tree_11<-subset(MBC_reads,metadata$treeid=="11" )
-tree_11_mat <- t(as.matrix(apply(tree_11,2,as.integer)))
-
-tree_12<-subset(MBC_reads,metadata$treeid=="12" )
-tree_12_mat <- t(as.matrix(apply(tree_12,2,as.integer)))
-
-tree_14<-subset(MBC_reads,metadata$treeid=="14" )
-tree_14_mat <- t(as.matrix(apply(tree_14,2,as.integer)))
-
-tree_13<-subset(MBC_reads,metadata$treeid=="13" )
-tree_13_mat <- t(as.matrix(apply(tree_13,2,as.integer)))
-
-tree_14<-subset(MBC_reads,metadata$treeid=="14" )
-tree_14_mat <- t(as.matrix(apply(tree_14,2,as.integer)))
-
-tree_15<-subset(MBC_reads,metadata$treeid=="15" )
-tree_15_mat <- t(as.matrix(apply(tree_15,2,as.integer)))
-
-tree_16<-subset(MBC_reads,metadata$treeid=="16" )
-tree_16_mat <- t(as.matrix(apply(tree_16,2,as.integer)))
-
-tree_17<-subset(MBC_reads,metadata$treeid=="17" )
-tree_17_mat <- t(as.matrix(apply(tree_17,2,as.integer)))
-
-tree_18<-subset(MBC_reads,metadata$treeid=="18" )
-tree_18_mat <- t(as.matrix(apply(tree_18,2,as.integer)))
-
-tree_19<-subset(MBC_reads,metadata$treeid=="19" )
-tree_19_mat <- t(as.matrix(apply(tree_19,2,as.integer)))
-
-tree_20<-subset(MBC_reads,metadata$treeid=="20" )
-tree_20_mat <- t(as.matrix(apply(tree_20,2,as.integer)))
-
-tree_list = list(tree_3 = tree_3_mat, tree_4 = tree_4_mat,tree_6 = tree_6_mat,
-                 tree_7 = tree_7_mat, tree_8 = tree_8_mat,tree_9 = tree_9_mat,tree_10 = tree_10_mat,
-                 tree_11 = tree_11_mat,tree_11 = tree_11_mat,tree_12 = tree_12_mat,tree_13 = tree_13_mat,
-                 tree_14 = tree_14_mat, tree_15 = tree_15_mat, tree_16 = tree_16_mat, tree_17 = tree_17_mat,
-                 tree_19 = tree_19_mat, tree_20 = tree_20_mat)
-
-q0camp1 <- iNEXT(tree_list, q=0, datatype="incidence_raw", endpoint=500)
-ggiNEXT(q0camp1, facet.var = "none", type = 1)
-
-ggiNEXT(camp_list, type=3, facet.var="site")
-
-
-
-
-
-
-
+#____________________________________________
 ### Additive diversity partitioning 
 metadata <- metadata %>% rownames_to_column('sample')
-sample_hierarchy <- metadata %>% subset(select = c("sample", "treeid"))
+sample_hierarchy <- metadata %>% subset(select = c("sample", "treeid", "camp"))
 metadata <- metadata %>% column_to_rownames('sample')
-
 adDivpart<-adipart(MBC_reads, sample_hierarchy, index=c("richness", "shannon", "simpson"), nsimul=99)
-#how do i plot this??
+plot_adipart(adDivpart)
+
+#_______________________________________________
+#How does choa vary with altitude? 
+#sp richness/chao?
+
+
+#___________________
+#beta dissimilarity 
+#____________________
+#GLM, elevation on species richness per tray and chao per tray
+OTUrichness<-apply(MBC_reads,1,sum) 
+GLMdataframe<-as.data.frame(cbind(OTUrichness, metadata$GPS_alt))
+#colnames(GLMdataframe) <- c("OTUrich", "elevation", "camp")
+
+
+OTUrich.alt.mod<-glm(formula=OTUrichness~metadata$GPS_alt, family = poisson, data=GLMdataframe)
+summary(OTUrich.alt.mod)
+
+propnull.dev<-(OTUrich.alt.mod$null.deviance - OTUrich.alt.mod$deviance)/OTUrich.alt.mod$null.deviance
+propnull.dev
+exp(3.377e-04)
+
+# predict for a neat sequence of log elevation values
+pred <- expand.grid(lgelevation = seq(7, 9, by=0.005249344))
+head(pred)
+tail(pred)
+pred$fit <- predict(OTUrich.alt.mod, newdata=pred, type='response')
+head(pred)
+plot(GLMdataframe$OTUrichness ~ log(GLMdataframe$V2), data=GLMdataframe)
+lines(fit ~ lgelevation, data=pred, col='red')
+

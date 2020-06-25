@@ -512,12 +512,11 @@ plot_adipart(adDivpart)
 #beta dissimilarity 
 #____________________
 #GLM, elevation on species richness per tray and chao per tray
-OTUrichness<-apply(MBC_reads,1,sum) 
-GLMdataframe<-as.data.frame(cbind(OTUrichness, metadata$GPS_alt))
+metadata$OTUrichness<-apply(MBC_reads,1,sum) 
 #colnames(GLMdataframe) <- c("OTUrich", "elevation", "camp")
 
 
-OTUrich.alt.mod<-glm(formula=OTUrichness~metadata$GPS_alt, family = poisson, data=GLMdataframe)
+OTUrich.alt.mod<-glm(formula=OTUrichness~GPS_alt+factor(treeid), family = quasipoisson, data=metadata)
 summary(OTUrich.alt.mod)
 
 propnull.dev<-(OTUrich.alt.mod$null.deviance - OTUrich.alt.mod$deviance)/OTUrich.alt.mod$null.deviance
@@ -532,4 +531,73 @@ pred$fit <- predict(OTUrich.alt.mod, newdata=pred, type='response')
 head(pred)
 plot(GLMdataframe$OTUrichness ~ log(GLMdataframe$V2), data=GLMdataframe)
 lines(fit ~ lgelevation, data=pred, col='red')
+
+
+
+
+
+
+
+
+
+ggplot(GLMdataframe, aes(x = log(V2), y = OTUrichness) ) +
+  geom_point(aes(fill = metadata$camp, shape = metadata$camp, colour = metadata$camp), position = "jitter") +
+  geom_smooth(method = "glm", se = T) +scale_shape_manual(values=c(3, 16, 17, 18)) + ylab("OTU Richness") + xlab("Elevation (logged)")+ggtitle("OTU Richness with Elevation of Sampled Tree")
+
+
+#___________________
+
+#biodiveristyR package species accumulation curves using biodiveristyR package
+
+metadata$trap.totals <- apply(MBC_reads,1,sum)
+Accum.1 <- accumresult(MBC_reads, y=metadata, scale='trap.totals', method='exact', conditioned=TRUE, permutations = 1000)
+
+#Per camp
+jpeg("camp_accumBioDivR.jpg", width = 480, height = 480, units = "px", pointsize = 12, quality = 75,bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
+accumcomp(MBC_reads, y=metadata, factor='camp', method='exact', legend=FALSE, conditioned=TRUE, xlab="trap")
+dev.off()
+#per tree species
+jpeg("treesp_accumBioDivR.jpg", width = 600, height = 800, units = "px", pointsize = 12, quality = 75,bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
+accumcomp(MBC_reads, y=metadata, factor='treeid', method='exact', legend=F, conditioned=TRUE, xlab="trap")
+dev.off()
+
+
+#_____________
+#PCoA
+dist <- vegdist(MBC_reads,  method = "jaccard")
+PCOA <- pcoa(dist)
+barplot(PCOA$values$Relative_eig[1:10])
+biplot.pcoa(PCOA)
+biplot.pcoa(PCOA, metadata$GPS_alt)
+
+pcoa.plot(MBC_reads, is.OTU=F, stand.method="hellinger", meta=metadata, factors = c(camp="camp"), 
+          dist.method = "jaccard", sample.labels = F, ggplot2 = T, ellipse = 1, top =0, bw=F)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

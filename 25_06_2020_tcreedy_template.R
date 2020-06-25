@@ -515,6 +515,29 @@ plot_adipart(adDivpart)
 metadata$OTUrichness<-apply(MBC_reads,1,sum) 
 #colnames(GLMdataframe) <- c("OTUrich", "elevation", "camp")
 
+overdisp_fun <- function(model) {
+    rdf <- df.residual(model)
+    rp <- residuals(model,type="pearson")
+    Pearson.chisq <- sum(rp^2)
+    prat <- Pearson.chisq/rdf
+    pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
+    c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
+}
+
+m1 <- glmer(OTUrichness~GPS_alt+(1|factor(treeid),data=metadata,family=poisson)
+summary(m1)
+overdisp_fun(m1)
+cc <- coef(summary(m1))
+phi <- overdisp_fun(m1)["ratio"]
+cc <- within(as.data.frame(cc),
+{   `Std. Error` <- `Std. Error`*sqrt(phi)
+    `z value` <- Estimate/`Std. Error`
+    `Pr(>|z|)` <- 2*pnorm(abs(`z value`), lower.tail=FALSE)
+})
+printCoefmat(cc,digits=3)
+  
+      
+
 
 OTUrich.alt.mod<-glm(formula=OTUrichness~GPS_alt+factor(treeid), family = quasipoisson, data=metadata)
 summary(OTUrich.alt.mod)

@@ -42,9 +42,8 @@ library(BiodiversityR)
 library(iNEXT)
 library(tibble)
 library(ape)
-library(geosphere)
 library(RAM)
-
+library(lme4)
 
 # Load functions ----------------------------------------------------------
 # Load any custom functions. These are assumed to be in the root of your
@@ -401,99 +400,23 @@ MBC_reads <- MBC_reads[rowSums(MBC_reads) > 0, colSums(MBC_reads) > 0]
 metadata <- metadata[rownames(MBC_reads), ]
 taxonomy <- taxonomy[colnames(MBC_reads), ]
 
-#______________________________________________________________
-#EXPLORING DATA
-
-#OPTIONAL create melted dataframe 
-#MBC_reads_melt<-melt(MBC_reads)
-
-#examine basic diversity indices
-#OTU richness
-specnumber(MBC_reads, groups = metadata$species)
-treeid<-specnumber(MBC_reads, groups = metadata$treeid)
-specnumber(MBC_reads, groups = metadata$camp)
-specnumber(MBC_reads, groups = metadata$GPS_alt)
+#STATS
 #___________________________________
 #Mantel Test 
 
 dist.pres_abs = vegdist(MBC_reads, method = "jaccard")
 
-#environmental vector (gpsalt or elevation)
+#environmental vector - gpsalt 
 elevation = metadata$GPS_alt
 dist_elevation = dist(elevation, method = "euclidean")
-#Mantel elvation test
+#Mantel elevation test and Reads Mantel test
 reads_elevation = mantel(dist.pres_abs, dist_elevation, method = "spearman", permutations = 9999, na.rm = TRUE)
 
-#distance matrix for ongitude and latitude
-geo = data.frame(df$Longitude, df$Latitude)
-d_geo = distm(geo, fun = distHaversine)
-dist.geo = as.dist(d.geo)
-#longitude and latitude 
-long_lat = data.frame(metadata$longitude, metadata$latitude)
-#haversine distance - The shortest distance between two points (i.e., the 'great-circle-distance' or 'as the crow flies'), 
-#according to the 'haversine method'. 
-#This method assumes a spherical earth, ignoring ellipsoidal effects
-#Is there a better method that accounts for elevation changes?
-d_geo = distm(long_lat, fun = distHaversine)
-dist.geo = as.dist(d_geo)
-abund_geo  = mantel(dist.pres_abs, dist.geo, method = "spearman", permutations = 9999, na.rm = TRUE)
-
-
-#_______________________________
-#NMDs
-#Thomas version so that it can take the raw community data
-#NMDS.scree <- function(x, distance, autotransform, trymax){
-#  plot(rep(1,5), replicate(5, metaMDS(x, distance = distance, autotransform = autotransform, 
-    #                                  k=1, trymax = trymax)$stress), xlim = c(1,5),
-    #   ylim = c(0, 0.4), xla ="# of Dimensions", ylab = "Stress", main ="NMDS stress plot euclidean @1000")
-#  for(i in 1:7){
-  #  points(rep(i +1,5), replicate(5, metaMDS(x, distance = distance, autotransform = autotransform, 
-                                        #     k=i+1, trymax = trymax)$stress))
- # }
-#}
-
-#NMDS.scree(MBC_reads, 'jaccard', TRUE, 100)
-#reads_dist<-vegdist(MBC_reads, method = "jaccard")
-#CommunityNMDS_k5_jaccard <- metaMDS(reads_dist,
-#                                    distance = "jaccard",
- #                                   k = 5,
-  #                                  maxit = 99, 
-   #                                 trymax = 100, 
-          #                          wescores = T)
-#CommunityNMDS_k3_euclidean$stress
-#stressplot(CommunityNMDS_k3_euclidean)
-#ordiplot(CommunityNMDS_k3_euclidean,type="p")
-#ordihull(CommunityNMDS_k3_euclidean,groups=metadata$climband,draw="polygon", col="grey90",label=T, cex=0.5, main = "CommunityNMDS_k3_euclidean100trymax")
-#_____________________________
-#Chao exploration
-
-#library(ggpubr)
-#graph the altitudes of different trees, just exploration
-#alt_bar<-ggplot(data=metadata, aes(x=treeid, y=GPS_alt, fill=GPS_alt)) +
-#geom_bar(stat="identity", position=position_dodge())+labs(x="tree number", y="tree altitude")+
-#scale_fill_continuous(name="trees and their altitude")
-#alt_bar
-#Chao estimates of species richness and bargraph for each tree
-otuspecpooltree<-specpool(MBC_reads, metadata$treeid)
-otuspecpooltree["treeid"]<-metadata_raw$treeid
-otuspecpooltree["camp"]<-metadata_raw$camp
-otuspecpooltree["scale_treealt"]<-scale(metadata_raw$GPS_alt)
-otuspecpooltree["treealt"]<-metadata_raw$GPS_alt
-
-jpeg("chaobytreebar.jpg", width = 480, height = 480, units = "px", pointsize = 12, quality = 75, bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
-ggplot(otuspecpooltree, aes(x=reorder(treeid, -chao), y=chao)) + geom_bar(stat="identity") +
-  geom_errorbar(aes(ymin=chao-chao.se, ymax=chao+chao.se))
-dev.off()
-
-#specaccume using vegan package
-#Per tree species
-#liquid amber
-liquidamber_accum <- specaccum(MBC_reads, method = "random", permutations = 1000, subset=metadata$species=="Liquidambar styracaflua")
-jpeg("liquidamber_accumVegan.jpg", width = 480, height = 480, units = "px", pointsize = 12, quality = 75,bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
-plot(liquidamber_accum, ci.type = "poly", col = "blue", ci.col = "lightblue", 
-     lwd = 2, ci.lty = 0, xlab = "number of traps", 
-     ylab = "cumulative number of OTUs")
-dev.off()
+#distance matrix for longitude and latitude
+geo = data.frame(metadata$longitude, metadata$latitude)
+dist.geo = vegdist(geo, method = "euclidean")
+#Reads and lat/long Mantel Test
+reads.dist_geo.dist_Mod  = mantel(dist.pres_abs, dist.geo, method = "spearman", permutations = 9999, na.rm = TRUE)
 
 #____________________________________________
 ### Additive diversity partitioning 
@@ -503,124 +426,43 @@ metadata <- metadata %>% column_to_rownames('sample')
 adDivpart<-adipart(MBC_reads, sample_hierarchy, index=c("richness", "shannon", "simpson"), nsimul=99)
 plot_adipart(adDivpart)
 
-#_______________________________________________
-#How does choa vary with altitude? 
-#sp richness/chao?
-
-
-#___________________
-#beta dissimilarity 
-#____________________
-#GLM, elevation on species richness per tray and chao per tray
+#_____________________________________________
+### Generalised linear mixed-effect model, elevation on species richness per tray, using a quasi poisson 
+#get around due to overdispersion in the data. 
 metadata$OTUrichness<-apply(MBC_reads,1,sum) 
-#colnames(GLMdataframe) <- c("OTUrich", "elevation", "camp")
 
+metadata$treeid<-factor(metadata$treeid)
+metadata$gpsalt_scaled<-scale(metadata$GPS_alt)
 overdisp_fun <- function(model) {
-    rdf <- df.residual(model)
-    rp <- residuals(model,type="pearson")
-    Pearson.chisq <- sum(rp^2)
-    prat <- Pearson.chisq/rdf
-    pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
-    c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
+  rdf <- df.residual(model)
+  rp <- residuals(model,type="pearson")
+  Pearson.chisq <- sum(rp^2)
+  prat <- Pearson.chisq/rdf
+  pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
+  c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
 }
 
-m1 <- glmer(OTUrichness~GPS_alt+(1|factor(treeid),data=metadata,family=poisson)
+m1 <- glmer(OTUrichness~gpsalt_scaled+(1|treeid),data=metadata,family=poisson)
 summary(m1)
 overdisp_fun(m1)
 cc <- coef(summary(m1))
 phi <- overdisp_fun(m1)["ratio"]
 cc <- within(as.data.frame(cc),
-{   `Std. Error` <- `Std. Error`*sqrt(phi)
-    `z value` <- Estimate/`Std. Error`
-    `Pr(>|z|)` <- 2*pnorm(abs(`z value`), lower.tail=FALSE)
-})
+             {   `Std. Error` <- `Std. Error`*sqrt(phi)
+             `z value` <- Estimate/`Std. Error`
+             `Pr(>|z|)` <- 2*pnorm(abs(`z value`), lower.tail=FALSE)
+             })
 printCoefmat(cc,digits=3)
-  
-      
+            
+ggplot(metadata, aes(x=GPS_alt, y=OTUrichness, col = treeid))  +  
+  geom_point() +
+  scale_y_continuous(trans = "log10")
+            
+            
 
-
-OTUrich.alt.mod<-glm(formula=OTUrichness~GPS_alt+factor(treeid), family = quasipoisson, data=metadata)
-summary(OTUrich.alt.mod)
-
-propnull.dev<-(OTUrich.alt.mod$null.deviance - OTUrich.alt.mod$deviance)/OTUrich.alt.mod$null.deviance
-propnull.dev
-exp(3.377e-04)
-
-# predict for a neat sequence of log elevation values
-pred <- expand.grid(lgelevation = seq(7, 9, by=0.005249344))
-head(pred)
-tail(pred)
-pred$fit <- predict(OTUrich.alt.mod, newdata=pred, type='response')
-head(pred)
-plot(GLMdataframe$OTUrichness ~ log(GLMdataframe$V2), data=GLMdataframe)
-lines(fit ~ lgelevation, data=pred, col='red')
-
-
-
-
-
-
-
-
-
-ggplot(GLMdataframe, aes(x = log(V2), y = OTUrichness) ) +
-  geom_point(aes(fill = metadata$camp, shape = metadata$camp, colour = metadata$camp), position = "jitter") +
-  geom_smooth(method = "glm", se = T) +scale_shape_manual(values=c(3, 16, 17, 18)) + ylab("OTU Richness") + xlab("Elevation (logged)")+ggtitle("OTU Richness with Elevation of Sampled Tree")
-
-
-#___________________
-
-#biodiveristyR package species accumulation curves using biodiveristyR package
-
-metadata$trap.totals <- apply(MBC_reads,1,sum)
-Accum.1 <- accumresult(MBC_reads, y=metadata, scale='trap.totals', method='exact', conditioned=TRUE, permutations = 1000)
-
-#Per camp
-jpeg("camp_accumBioDivR.jpg", width = 480, height = 480, units = "px", pointsize = 12, quality = 75,bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
-accumcomp(MBC_reads, y=metadata, factor='camp', method='exact', legend=FALSE, conditioned=TRUE, xlab="trap")
-dev.off()
-#per tree species
-jpeg("treesp_accumBioDivR.jpg", width = 600, height = 800, units = "px", pointsize = 12, quality = 75,bg = "white", res = NA, family = "", restoreConsole = TRUE,type = c("windows", "cairo"))
-accumcomp(MBC_reads, y=metadata, factor='treeid', method='exact', legend=F, conditioned=TRUE, xlab="trap")
-dev.off()
-
-
-#_____________
-#PCoA
-dist <- vegdist(MBC_reads,  method = "jaccard")
-PCOA <- pcoa(dist)
-barplot(PCOA$values$Relative_eig[1:10])
-biplot.pcoa(PCOA)
-biplot.pcoa(PCOA, metadata$GPS_alt)
-
-pcoa.plot(MBC_reads, is.OTU=F, stand.method="hellinger", meta=metadata, factors = c(camp="camp"), 
-          dist.method = "jaccard", sample.labels = F, ggplot2 = T, ellipse = 1, top =0, bw=F)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            
+ 
+ 
+            
+            
+           

@@ -35,3 +35,5 @@ needs all three variables in the r script
 -metadata
 -reads
 -taxonomy
+
+-also needs adipart script and check_expected_richness

@@ -1,34 +1,44 @@
 #!/bin/bash
 
-n=${1?Error: no minsize given}
-n2=${2?Error: no alpha given}
+n=${1?Error: no run name given}
+n2=${2? Error: no subsample given}
+n3=${2?Error: no minsize given}
+n4=${3?Error: no alpha given}
 
-#does random sub sampling happen before this? on 3_mbc_concat? I think so
+mkdir $n
 
-echo "Step 1: Denoising"
-vsearch --cluster_unoise 4_mbc_derep.fasta --minsize $n --unoise_alpha $n2 --centroids 5_mbc_denoise.fasta
-
-echo "Step 2: Length Filtering"
+if [[ $n2 < 100 ]]
+   then run below with $n2 
+  Thomassubsample script 4_mbc_derep.fasta parameter here? output subsampled_percentagen_mbc.fasta 
+  vsearch --cluster_unoise subsampled_percentagen_mbc.fasta  --minsize $n3 --unoise_alpha $n4 --centroids 5_mbc_denoise.fasta
+else 
+vsearch --cluster_unoise 4_mbc_derep.fasta --minsize $n3 --unoise_alpha $n4 --centroids 5_mbc_denoise.fasta
+fi
+ 
+echo "Step 3: Length Filtering"
 vsearch --fastx_filter 5_mbc_denoise.fasta --fastq_minlen 418 --fastq_maxlen 418 -fastaout 6_mbc_indelfil.fasta
 rm 5_mbc_denoise.fasta
 
-echo "Step 3: Translation Filtering"
+echo "Step 4: Translation Filtering"
 filtertranslate -i 6_mbc_indelfil.fasta -t 5 
 rm *transfail.fa
 mv 6_mbc_indelfil_transpass.fa 7_mbc_transpass.fasta
 rm 6_mbc_indelfil_transpass.fa
 
-echo "Step 4: Chimera Filtering"
+echo "Step 5: Chimera Filtering"
 vsearch --uchime3_denovo 7_mbc_transpass.fasta --nonchimeras 8_mbc_final.fasta
 rm 7_mbc_transpass.fasta
 
-echo "Step 5: OTU Delimitation"
-vsearch --cluster_size 8_mbc_final.fasta --sizein --relabel otu --id 0.97 --centroids master_coleop_otus.fasta
+echo "Step 6: ASV filtering by Thomas's Script"
+./Thomas_filterscript 8_mbc_final.fasta
 
-echo "Step 6: Reads Mapping"
+echo "Step 7: OTU Delimitation"
+vsearch --cluster_size 8_mbc_final.fasta --sizein --relabel otu --id 0.97 --centroids $n_otus.fasta
+
+echo "Step 8: Reads Mapping"
 vsearch --usearch_global 3_mbc_concat.fasta -db master_coleop_otus.fasta -id 0.97 -otutabout coleop_reads_map.tsv
 
-echo "Step 6: Reads Mapping Alternative Version, potentially better?"
+echo "Step 9: Reads Mapping Alternative Version, potentially better?"
 vsearch --usearch_global 3_mbc_concat.fasta -db master_coleop_otus.fasta -id 0.97 -uc coleop_reads_search.uc
 
 needs all three variables in the r script

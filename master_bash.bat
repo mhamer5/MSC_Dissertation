@@ -4,9 +4,9 @@ echo $1 $2 $3 '> echo $1 $2 $3'
 
 args=("$@") 
  
-mkdir /home/matthew/test_directory/test_disruns/${args[0]}
+mkdir /home/matthew/diss_runs/${args[0]}
 
-cd /home/matthew/test_directory/test_disruns/${args[0]}
+cd /home/matthew/diss_runs/${args[0]}
 
 echo "Step 1: Denoising" 
 vsearch --cluster_unoise /home/matthew/test_directory/testfiles_formaster_bash/4_mbc_derep.fasta --minsize ${args[1]} --unoise_alpha ${args[2]} --centroids 5_mbc_denoise.fasta

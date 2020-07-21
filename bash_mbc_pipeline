@@ -1,17 +1,24 @@
 #!/bin/bash
 
-n=${1?Error: no run name given}
-n2=${2?Error: no subsample percentage given} #this is of course assuming a subsample variable is given for thomas's script
-n3=${2?Error: no minsize given}
-n4=${3?Error: no alpha given}
+1=${1?Error: no run name given} #how do i name the resultant files run name $n_file_name 
+2=${2?Error: no subsample percentage given} 
+3=${3?Error: no minsize given}
+4=${4?Error: no alpha given}
 
-mkdir $n
+args=("$@") 
+       directory  subsample  minsize   alpha  
+echo ${args[0]} ${args[1]} ${args[2]} ${args[3]} #probably do not need to do this
+
+mkdir /home/matthew/diss_runs/${args[0]}
+
+cd ${args[0]}
 
 if [ $n2 < 100 ]; then
-  Thomassubsample_script 4_mbc_derep.fasta parameter here? output subsampled_percentagen_mbc.fasta 
+  Thomassubsample_script home/matthew/files_for_master_bashscript/4_mbc_derep.fasta parameter here ${args[1]}? output subsampled_percentagen_mbc.fasta 
   vsearch --cluster_unoise subsampled_percentagen_mbc.fasta  --minsize $n3 --unoise_alpha $n4 --centroids 5_mbc_denoise.fasta
+  rm subsampled_percentage_mbc.fasta 
 else 
-vsearch --cluster_unoise 4_mbc_derep.fasta --minsize $n3 --unoise_alpha $n4 --centroids 5_mbc_denoise.fasta
+vsearch --cluster_unoise home/matthew/files_for_master_bashscript/4_mbc_derep.fasta --minsize ${args[2]} --unoise_alpha ${args[3]} --centroids 5_mbc_denoise.fasta
 fi
  
 echo "Step 3: Length Filtering"
@@ -29,16 +36,15 @@ vsearch --uchime3_denovo 7_mbc_transpass.fasta --nonchimeras 8_mbc_final.fasta
 rm 7_mbc_transpass.fasta
 
 echo "Step 6: Coleoptera ASV filtering by Thomas's Script"
-./Thomas_filterscript coleoptera_master_asv_file 8_mbc_final.fasta
+home/matthew/files_for_master_bashscript./Thomas_filterscript coleoptera_master_asv_file 8_mbc_final.fasta -output 9_mbc_beetle_coleop.fasta 
+rm 8_mbc_final.fasta
 
 echo "Step 7: OTU Delimitation"
-vsearch --cluster_size 8_mbc_final.fasta --sizein --relabel otu --id 0.97 --centroids $n_otus.fasta
+vsearch --cluster_size 9_mbc_beetle_coleop.fasta --sizein --relabel otu --id 0.97 --centroids ${args[0]}_otus.fasta
 
 echo "Step 8: Reads Mapping"
-vsearch --usearch_global 3_mbc_concat.fasta (this needs changing) -db $n_otus.fasta -id 0.97 -otutabout $n_coleop_reads_map.tsv
+vsearch --usearch_global home/matthew/files_for_master_bashscript/3_mbc_concat.fasta (this needs changing?) -db ${args[0]}_otus.fasta -id 0.97 -otutabout ${args[0]}_coleop_reads_map.tsv
 
-echo "Step 9: Reads Mapping Alternative Version, potentially better?"
-vsearch --usearch_global 3_mbc_concat.fasta -db master_coleop_otus.fasta -id 0.97 -uc coleop_reads_search.uc
 
 -figure the outputs, which all go into the r script
 
@@ -52,3 +58,5 @@ needs all three variables in the r script
 what does the r script output? put into n/n_results?
 
 -also needs adipart script and check_expected_richness
+
+cd../ 

@@ -1,15 +1,14 @@
 #!/bin/bash
 
 n=${1?Error: no run name given}
-n2=${2? Error: no subsample given}
+n2=${2?Error: no subsample percentage given}
 n3=${2?Error: no minsize given}
 n4=${3?Error: no alpha given}
 
 mkdir $n
 
-if [[ $n2 < 100 ]]
-   then run below with $n2 
-  Thomassubsample script 4_mbc_derep.fasta parameter here? output subsampled_percentagen_mbc.fasta 
+if [ $n2 < 100 ]; then
+  Thomassubsample_script 4_mbc_derep.fasta parameter here? output subsampled_percentagen_mbc.fasta 
   vsearch --cluster_unoise subsampled_percentagen_mbc.fasta  --minsize $n3 --unoise_alpha $n4 --centroids 5_mbc_denoise.fasta
 else 
 vsearch --cluster_unoise 4_mbc_derep.fasta --minsize $n3 --unoise_alpha $n4 --centroids 5_mbc_denoise.fasta
@@ -29,21 +28,27 @@ echo "Step 5: Chimera Filtering"
 vsearch --uchime3_denovo 7_mbc_transpass.fasta --nonchimeras 8_mbc_final.fasta
 rm 7_mbc_transpass.fasta
 
-echo "Step 6: ASV filtering by Thomas's Script"
-./Thomas_filterscript 8_mbc_final.fasta
+echo "Step 6: Coleoptera ASV filtering by Thomas's Script"
+./Thomas_filterscript coleoptera_master_asv_file 8_mbc_final.fasta
 
 echo "Step 7: OTU Delimitation"
 vsearch --cluster_size 8_mbc_final.fasta --sizein --relabel otu --id 0.97 --centroids $n_otus.fasta
 
 echo "Step 8: Reads Mapping"
-vsearch --usearch_global 3_mbc_concat.fasta -db master_coleop_otus.fasta -id 0.97 -otutabout coleop_reads_map.tsv
+vsearch --usearch_global 3_mbc_concat.fasta (this needs changing) -db $n_otus.fasta -id 0.97 -otutabout $n_coleop_reads_map.tsv
 
 echo "Step 9: Reads Mapping Alternative Version, potentially better?"
 vsearch --usearch_global 3_mbc_concat.fasta -db master_coleop_otus.fasta -id 0.97 -uc coleop_reads_search.uc
+
+-figure the outputs, which all go into the r script
+
+where does taxonomy come into this? coleoptera asv filtering?
 
 needs all three variables in the r script
 -metadata
 -reads
 -taxonomy
+
+what does the r script output? put into n/n_results?
 
 -also needs adipart script and check_expected_richness

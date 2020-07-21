@@ -1,7 +1,7 @@
 #!/bin/bash
 
 n=${1?Error: no run name given}
-n2=${2?Error: no subsample percentage given}
+n2=${2?Error: no subsample percentage given} #this is of course assuming a subsample variable is given for thomas's script
 n3=${2?Error: no minsize given}
 n4=${3?Error: no alpha given}
 

@@ -36,7 +36,7 @@ echo "Step 7: Reads Mapping"
 vsearch --usearch_global /home/matthew/files_mbc_bash/3_mbc_concat.fasta -db *_otus.fasta -id 0.97 -otutabout ${args[0]}_coleop_reads_map.tsv
 mv *_coleop_reads_map.tsv reads.tsv
  
-# I don't hink the below is 100% correct
+# I don't think the below is 100% correct
 echo "Step 8: R Script analysis"
 /home/matthew/files_mbc_bash/./analysisscript.R sampledata_matt.csv reads
 

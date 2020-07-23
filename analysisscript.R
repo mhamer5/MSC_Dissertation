@@ -8,8 +8,8 @@ suppressMessages(require(lme4))
 # Set up options
 spec <- matrix(c(
   'reads',        'r', 1, 'character',
-  'metadata',     'a', 1, 'character',
-  'paramversion', 'm', 1, 'numeric'
+  'metadata',     'm', 1, 'character',
+  'paramversion', 'n', 1, 'numeric'
 ), byrow = T, ncol = 4)
 
 # Read options

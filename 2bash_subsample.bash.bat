@@ -1,17 +1,13 @@
 #!/bin/bash
 
-echo $1 $2
-
+echo $1 $2  '> echo $1 $2'
+#$2 = run number
 args=("$@") 
 
-mkdir /home/matthew/diss_runs/${args[0]}
-
-cd /home/matthew/diss_runs/${args[0]}
-
 path to subsample script/./subsampling_script subsampleparamater ${args[1]} inputfile 3_mbc_concat outputfile? or...
-mv 3_mbc_concat 3_mbc_subsample_${args[0]} 
+mv 3_mbc_concat 3_mbc_subsample_${args[1]}_{args[0]}.fasta 
 
-vsearch --derep_fulllength 3_mbc_subsample_${args[1]}  --output 4_mbc_derep.fasta --sizeout --relabel uniq
+vsearch --derep_fulllength 3_mbc_subsample_${args[1]}_{args[0]}  --output 4_mbc_derep_{args[1]}_{args[0]}.fasta --sizeout --relabel uniq
 rm 3_mbc_subsample_*
 
 #Questions/comments:

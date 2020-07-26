@@ -33,5 +33,5 @@ rm 9_mbc_beetle_coleop.fasta
 
 echo "Step 6: Reads Mapping"
 vsearch --usearch_global /home/matthew/files_mbc_bash/3_mbc_concat.fasta -db ${args[0]}_otus.fasta -id 0.97 -otutabout ${args[0]}_coleop_reads_map.tsv
-mv ${args[0]}_coleop_reads_map.tsv reads.tsv
+mv ${args[0]}_coleop_reads_map.tsv ${args[0]}_reads.tsv
 

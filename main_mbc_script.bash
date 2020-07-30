@@ -1,19 +1,19 @@
 #!/bin/bash
 
 echo $1 $2 $3 '> echo $1 $2 $3'
-
+## $1 = arg0
 args=("$@") 
  
 mkdir /home/matthew/diss_runs/${args[0]}
 
 cd /home/matthew/diss_runs/${args[0]}
 
-if [ ${args[2]} == X ]; then
+if [ ${args[3]} == X ]; then
 "Step 1: No Alpha, therefore minsize only"
-vsearch --derep_fulllength /home/matthew/files_mbc_bash/4_mbc_derep.fasta --output 5_mbc_denoise.fasta --sizeout --relabel uniq --minuniquesize ${args[1]}
+vsearch --derep_fulllength /home/matthew/files_mbc_bash/4_mbc_derep.fasta --output 5_mbc_denoise.fasta --sizeout --relabel uniq --minuniquesize ${args[2]}
 else 
 echo "Step 1: Denoising" 
-vsearch --cluster_unoise /home/matthew/files_mbc_bash/4_mbc_derep.fasta --minsize ${args[1]} --unoise_alpha ${args[2]} --centroids 5_mbc_denoise.fasta
+vsearch --cluster_unoise /home/matthew/files_mbc_bash/4_mbc_derep.fasta --minsize ${args[2]} --unoise_alpha ${args[3]} --centroids 5_mbc_denoise.fasta
 fi
 
 echo "Step 2: Length Filtering"
@@ -25,7 +25,7 @@ vsearch --uchime3_denovo 7_mbc_transpass.fasta --nonchimeras 8_mbc_final.fasta
 rm 7_mbc_transpass.fasta
 
 echo "Step 4: Coleoptera ASV filtering by Thomas's Script"
-home/matthew/files_for_master_bashscript/./filter_fasta_by_fasta.py k coleoptera_master_asvs.fasta < 8_mbc_final.fasta >9_mbc_beetle_coleop.fasta
+/av/vls/biotools/./filter_fasta_by_fasta.py k /home/matthew/files_mbc_bash/coleop_asv_filtered.fasta < 8_mbc_final.fasta >9_mbc_beetle_coleop.fasta
 rm 8_mbc_final.fasta
 
 echo "Step 5: OTU Delimitation"

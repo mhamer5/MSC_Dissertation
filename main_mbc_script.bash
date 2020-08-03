@@ -9,7 +9,7 @@ mkdir /home/matthew/diss_runs/${args[0]}
 cd /home/matthew/diss_runs/${args[0]}
 
 if [[ ${args[2]} == "X" ]]; then
-"Step 1: No Alpha, therefore minsize only"
+echo "Step 1: No Alpha, therefore minsize only"
 vsearch --derep_fulllength /home/matthew/files_mbc_bash/4_mbc_derep.fasta --output 5_mbc_denoise.fasta --sizeout --relabel uniq --minuniquesize ${args[1]}
 else 
 echo "Step 1: Denoising" 

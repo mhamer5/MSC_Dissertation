@@ -1,3 +1,4 @@
+#This could do with a lot of cleaning up 
 rm(list=ls())
 dev.off()
 #Load packages----
